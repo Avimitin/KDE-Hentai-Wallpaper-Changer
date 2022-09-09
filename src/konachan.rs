@@ -1,4 +1,5 @@
 use anyhow::Context;
+use md5::{Digest, Md5};
 use serde::Deserialize;
 use tokio::{fs, io::AsyncWriteExt};
 use tokio_stream::StreamExt;
@@ -74,6 +75,12 @@ async fn get_image(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Re
     Ok(resp.swap_remove(choice).file_url)
 }
 
+fn md5sum(s: &str) -> String {
+    let mut hasher = Md5::new();
+    hasher.update(s.as_bytes());
+    format!("{:?}", hasher.finalize().to_ascii_uppercase())
+}
+
 pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Result<String> {
     let dir = ensure_temp_dir()
         .await
@@ -84,8 +91,7 @@ pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow:
         .with_context(|| "fail to get image information")?;
 
     let url = reqwest::Url::parse(&image_url).unwrap();
-    let filename = url.path_segments().unwrap().last().unwrap();
-    let filepath = format!("{dir}/{filename}");
+    let filepath = format!("{dir}/{}", md5sum(url.as_str()));
 
     let mut file = fs::File::create(&filepath).await?;
 
