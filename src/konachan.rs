@@ -68,20 +68,36 @@ struct ApiResposne {
     file_url: String,
 }
 
+fn gen_query(url: &mut reqwest::Url, page: u32, filter: Filter, hr: bool) {
+    let mut handle = url.query_pairs_mut();
+    if page != 0 {
+        handle.append_pair("page", &page.to_string());
+    }
+
+    let mut tags = Vec::new();
+    if hr {
+        tags.push("width:2560..".to_string());
+        tags.push("height:1600..".to_string());
+    }
+
+    if let Filter::None = filter {
+        if !tags.is_empty() {
+            handle.append_pair("tags", &tags[0]);
+        }
+
+        return;
+    }
+
+    tags.push(format!("rating:{filter}"));
+    handle.append_pair("tags", &tags.join(" "));
+}
+
 async fn get_image(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Result<String> {
     let page = seed % filter.get_limit(hi_resolution);
-    let url = if hi_resolution {
-        format!(
-            "https://konachan.com/post.json?page={page}&tags=width%3A2560..+height%3A1600..+rating%3A{}",
-            filter
-        )
-    } else {
-        format!(
-            "https://konachan.com/post.json?page={page}&tags=rating%3A{}",
-            filter
-        )
-    };
-    let mut resp = reqwest::get(&url).await?.json::<Vec<ApiResposne>>().await?;
+    let mut url = reqwest::Url::parse("https://konachan.com/post.json").unwrap();
+    gen_query(&mut url, page, filter, hi_resolution);
+
+    let mut resp = reqwest::get(url).await?.json::<Vec<ApiResposne>>().await?;
     let choice = rand::random::<usize>() % 20;
 
     // swap_remove performs better than vec[idx].clone()
