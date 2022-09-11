@@ -23,6 +23,19 @@ impl std::fmt::Display for Filter {
     }
 }
 
+impl From<String> for Filter {
+    fn from(s: String) -> Self {
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "safe" => Self::Safe,
+            "explicit" => Self::Explicit,
+            "questionable" => Self::Questionable,
+            "none" => Self::None,
+            _ => panic!("Unsupported filter type: {s}")
+        }
+    }
+}
+
 impl Filter {
     fn get_limit(&self, hi_resolution: bool) -> u32 {
         use Filter::*;
