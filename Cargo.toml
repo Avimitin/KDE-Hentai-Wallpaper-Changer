@@ -2,6 +2,14 @@
 name = "kde-wallpaper-changer"
 version = "0.1.0"
 edition = "2021"
+authors = ["Avimitin <avimitin@gmail.com>"]
+description = "Fill your desktop with hentai images"
+keywords = ["kde", "wallpaper", "hentai", "cli"]
+license = "Apache-2.0"
+readme = "README.md"
+categories = ["command-line-utilities"]
+default-run = "kwc"
+repository = "https://github.com/Avimitin/KDE-Hentai-Wallpaper-Changer"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,3 +30,4 @@ argh = "0.1.8"
 [[bin]]
 name = "kwc"
 path = "src/main.rs"
+doc = false
