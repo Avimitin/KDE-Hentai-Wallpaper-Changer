@@ -6,6 +6,23 @@ A wallpaper changer for those weebs who use KDE.
 
 ```bash
 git clone https://github.com/Avimitin/KDE-Hentai-Wallpaper-Changer
-cargo install .
-PATH="$PATH:$HOME/.cargo/bin" kwc --help
+
+cargo build --release
+cp ./target/release/kwc $HOME/.local/bin
+
+PATH="$PATH:$HOME/.local/bin" kwc --help
 ```
+
+## Automatically Change with Systemd
+
+```bash
+cp -r services/* $HOME/.config/systemd/user/
+systemctl --user start change-wallpaper.timer
+
+# Automatically trigger after boot
+systemctl --user enable change-wallpaper.timer
+```
+
+Update the duration in change-wallpaper.timer file. Use `man systemd.timer` to see more options.
+
+> 献出你的底裤！

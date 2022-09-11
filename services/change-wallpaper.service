@@ -1,0 +1,10 @@
+[Unit]
+Description=Download Hentai Image from Konachan
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/kwc -H
+
+[Install]
+WantedBy=default.target

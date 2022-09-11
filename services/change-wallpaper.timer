@@ -1,0 +1,8 @@
+[Unit]
+Description=Schedule the wallpaper download process
+
+[Timer]
+OnActiveSec=3m
+
+[Install]
+WantedBy=timers.target
