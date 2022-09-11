@@ -5,5 +5,7 @@ A wallpaper changer for those weebs who use KDE.
 ## Usage
 
 ```bash
-cargo run --release
+git clone https://github.com/Avimitin/KDE-Hentai-Wallpaper-Changer
+cargo install .
+PATH="$PATH:$HOME/.cargo/bin" kwc --help
 ```
