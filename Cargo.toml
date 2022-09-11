@@ -26,6 +26,7 @@ dbus = { version = "0.9.6" , features = ["futures"]}
 dbus-tokio = "0.7.5"
 md-5 = "0.10.4"
 argh = "0.1.8"
+base16ct = { version = "0.1.1", features = ["alloc"] }
 
 [[bin]]
 name = "kwc"

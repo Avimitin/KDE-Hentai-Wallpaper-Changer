@@ -31,7 +31,7 @@ impl From<String> for Filter {
             "explicit" => Self::Explicit,
             "questionable" => Self::Questionable,
             "none" => Self::None,
-            _ => panic!("Unsupported filter type: {s}")
+            _ => panic!("Unsupported filter type: {s}"),
         }
     }
 }
@@ -107,7 +107,23 @@ async fn get_image(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Re
 fn md5sum(s: &str) -> String {
     let mut hasher = Md5::new();
     hasher.update(s.as_bytes());
-    format!("{:?}", hasher.finalize().to_ascii_uppercase())
+    let hash = hasher.finalize();
+    base16ct::upper::encode_string(&hash)
+}
+
+fn escape_filename(url: &reqwest::Url) -> anyhow::Result<String> {
+    let filename = url
+        .path_segments()
+        .ok_or_else(|| anyhow::anyhow!("fail to get filename from respond URL"))?
+        .last()
+        .ok_or_else(|| anyhow::anyhow!("not a file url"))?;
+    let extension = std::path::Path::new(filename)
+        .extension()
+        .ok_or_else(|| anyhow::anyhow!("no extension found for this image"))?
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("invalid string format for current OS"))?;
+
+    Ok(format!("{}.{}", md5sum(url.as_str()), extension))
 }
 
 pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Result<String> {
@@ -120,9 +136,12 @@ pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow:
         .with_context(|| "fail to get image information")?;
 
     let url = reqwest::Url::parse(&image_url).unwrap();
-    let filepath = format!("{dir}/{}", md5sum(url.as_str()));
 
-    let mut file = fs::File::create(&filepath).await?;
+    // konachan's file is incompatible for unix path, so here we use md5 to hash the url and use it
+    // as filename.
+    let save_to = format!("{dir}/{}", escape_filename(&url)?);
+
+    let mut file = fs::File::create(&save_to).await?;
 
     let mut stream = reqwest::get(url).await?.bytes_stream();
 
@@ -133,11 +152,45 @@ pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow:
 
     file.sync_all().await?;
 
-    Ok(filepath)
+    Ok(save_to)
 }
 
 #[tokio::test]
 async fn test_download() {
     let path = download(rand::random(), Filter::Safe, true).await.unwrap();
     println!("{path}");
+}
+
+#[test]
+fn test_md5sum() {
+    let result = md5sum("fuckme");
+    assert_eq!(result, "79CFDD0E92B120FAADD7EB253EB800D0");
+}
+
+#[test]
+fn test_gen_query() {
+    let mut url = reqwest::Url::parse("https://konachan.com/post.json").unwrap();
+
+    let mut url1 = url.clone();
+    gen_query(&mut url1, 0, Filter::None, false);
+    // gen_query will append a question mark whatever we manipulated it or not. But it is
+    // acceptable.
+    assert_eq!(url1.as_str(), "https://konachan.com/post.json?");
+
+    let mut url2 = url.clone();
+    gen_query(&mut url2, 10, Filter::None, false);
+    assert_eq!(url2.as_str(), "https://konachan.com/post.json?page=10");
+
+    let mut url3 = url.clone();
+    gen_query(&mut url3, 10, Filter::Safe, false);
+    assert_eq!(
+        url3.as_str(),
+        "https://konachan.com/post.json?page=10&tags=rating%3Asafe"
+    );
+
+    gen_query(&mut url, 10, Filter::Safe, true);
+    assert_eq!(
+        url.as_str(),
+        "https://konachan.com/post.json?page=10&tags=width%3A2560..+height%3A1600..+rating%3Asafe"
+    );
 }
