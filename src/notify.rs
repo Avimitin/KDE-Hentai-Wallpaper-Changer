@@ -1,4 +1,4 @@
-use notify_rust::{ Notification, Timeout };
+use notify_rust::{Notification, Timeout};
 
 pub fn notify(text: &str) -> anyhow::Result<()> {
     Notification::new()

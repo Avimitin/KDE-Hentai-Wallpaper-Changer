@@ -4,7 +4,8 @@ use dbus::nonblock;
 
 macro_rules! js {
     ($file:expr) => {
-        format!(r#"function set() {{
+        format!(
+            r#"function set() {{
   var allDesktops = desktops();
   // if (allDesktops.length < 1) return;
   var d = allDesktops[0];
@@ -15,7 +16,9 @@ macro_rules! js {
   d.writeConfig("Image", "{}");
 }}
 
-set();"#, $file)
+set();"#,
+            $file
+        )
     };
 }
 
@@ -25,8 +28,15 @@ pub async fn set_wallpaper(filename: &str) -> anyhow::Result<()> {
         resource.await;
     });
 
-    let proxy = nonblock::Proxy::new("org.kde.plasmashell", "/PlasmaShell", Duration::from_secs(2), connection);
-    proxy.method_call("org.kde.PlasmaShell", "evaluateScript", (js!(filename), )).await?;
+    let proxy = nonblock::Proxy::new(
+        "org.kde.plasmashell",
+        "/PlasmaShell",
+        Duration::from_secs(2),
+        connection,
+    );
+    proxy
+        .method_call("org.kde.PlasmaShell", "evaluateScript", (js!(filename),))
+        .await?;
 
     guardian.abort();
 
@@ -36,7 +46,9 @@ pub async fn set_wallpaper(filename: &str) -> anyhow::Result<()> {
 #[test]
 fn test_script_generation() {
     let script = js!("FUCK");
-    assert_eq!(script, r#"function set() {
+    assert_eq!(
+        script,
+        r#"function set() {
   var allDesktops = desktops();
   // if (allDesktops.length < 1) return;
   var d = allDesktops[0];
@@ -47,7 +59,8 @@ fn test_script_generation() {
   d.writeConfig("Image", "FUCK");
 }
 
-set();"#)
+set();"#
+    )
 }
 
 #[tokio::test]
