@@ -32,5 +32,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
     kde::set_wallpaper(&file_path).await?;
+    println!("Background is set to {file_path}");
     Ok(())
 }
