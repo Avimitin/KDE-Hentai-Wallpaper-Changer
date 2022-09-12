@@ -2,6 +2,8 @@
 
 A wallpaper changer for those weebs who use KDE.
 
+<img src="./asserts/screenshot.png" width=45% />
+
 ## Usage
 
 ```bash
