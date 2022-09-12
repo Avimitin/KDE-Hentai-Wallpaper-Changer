@@ -14,8 +14,7 @@ repository = "https://github.com/Avimitin/KDE-Hentai-Wallpaper-Changer"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tracing = "0.1"
-tokio ={ version = "1.21", features = ["full"] }
+tokio ={ version = "1.21", features = ["fs", "rt", "macros", "rt-multi-thread"] }
 anyhow = "1.0"
 reqwest ={ version = "0.11", features = ["stream", "json"]}
 rand = "0.8"
@@ -33,3 +32,10 @@ indicatif = "0.17"
 name = "kwc"
 path = "src/main.rs"
 doc = false
+
+[profile.release]
+debug = 0
+strip = "symbols"
+lto = true
+opt-level = 3
+codegen-units = 1

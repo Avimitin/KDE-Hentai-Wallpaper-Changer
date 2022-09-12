@@ -29,10 +29,7 @@ pub struct CliArg {
 async fn main() -> anyhow::Result<()> {
     let arg: CliArg = argh::from_env();
     notify::notify("Changing BG")?;
-    let file_path = konachan::download(
-        &arg
-    )
-    .await?;
+    let file_path = konachan::download(&arg).await?;
     kde::set_wallpaper(&file_path).await?;
     println!("Background is set to {file_path}");
     Ok(())
