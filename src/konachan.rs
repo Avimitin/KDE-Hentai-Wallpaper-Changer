@@ -1,4 +1,5 @@
 use anyhow::Context;
+use indicatif::{ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
 use serde::Deserialize;
 use tokio::{fs, io::AsyncWriteExt};
@@ -25,6 +26,19 @@ impl std::fmt::Display for Filter {
 
 impl From<String> for Filter {
     fn from(s: String) -> Self {
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "safe" => Self::Safe,
+            "explicit" => Self::Explicit,
+            "questionable" => Self::Questionable,
+            "none" => Self::None,
+            _ => panic!("Unsupported filter type: {s}"),
+        }
+    }
+}
+
+impl From<&String> for Filter {
+    fn from(s: &String) -> Self {
         let s = s.to_lowercase();
         match s.as_str() {
             "safe" => Self::Safe,
@@ -126,12 +140,23 @@ fn escape_filename(url: &reqwest::Url) -> anyhow::Result<String> {
     Ok(format!("{}.{}", md5sum(url.as_str()), extension))
 }
 
-pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow::Result<String> {
+fn create_download_bar(filesize: u64) -> ProgressBar {
+    let bar = ProgressBar::new(filesize);
+    bar.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .expect("invalid template string")
+        .progress_chars("#>-"));
+
+    bar
+}
+
+pub async fn download(arg: &super::CliArg) -> anyhow::Result<String> {
     let dir = ensure_temp_dir()
         .await
         .with_context(|| "fail to create temporary directory to store image files")?;
+    let filter = Filter::from(&arg.filter);
 
-    let image_url = get_image(seed, filter, hi_resolution)
+    let image_url = get_image(rand::random(), filter, arg.hi_resolution)
         .await
         .with_context(|| "fail to get image information")?;
 
@@ -143,11 +168,27 @@ pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow:
 
     let mut file = fs::File::create(&save_to).await?;
 
-    let mut stream = reqwest::get(url).await?.bytes_stream();
+    let api_response = reqwest::get(url).await?;
+    let filesize = api_response
+        .content_length()
+        .ok_or_else(|| anyhow::anyhow!("fail to get image size"))?;
 
+    let mut stream = api_response.bytes_stream();
+
+    let bar = create_download_bar(filesize);
+    if arg.show_process {
+        bar.set_message(format!("Downloading image to {save_to}"));
+    }
+
+    let mut progress_len = 0;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         file.write_all(&chunk).await?;
+        if arg.show_process {
+            let writed_len = std::cmp::min(progress_len + (chunk.len() as u64), filesize);
+            progress_len = writed_len;
+            bar.set_position(progress_len);
+        }
     }
 
     file.sync_all().await?;
@@ -157,8 +198,8 @@ pub async fn download(seed: u32, filter: Filter, hi_resolution: bool) -> anyhow:
 
 #[tokio::test]
 async fn test_download() {
-    let path = download(rand::random(), Filter::Safe, true).await.unwrap();
-    println!("{path}");
+    //let path = download(rand::random(), Filter::Safe, true, true).await.unwrap();
+    //println!("{path}");
 }
 
 #[test]

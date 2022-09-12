@@ -10,7 +10,7 @@ fn default_filter() -> String {
 
 #[derive(FromArgs)]
 /// Get anime image from Konachan(https://konachan.com) and set as wallpaper.
-struct CliArg {
+pub struct CliArg {
     /// download image larger than 2560x1600 only
     #[argh(switch, short = 'H')]
     hi_resolution: bool,
@@ -19,6 +19,10 @@ struct CliArg {
     /// Avaliable types: Explicit(R18+), Questionable(R16+), Safe(SFW), None(All types possible)
     #[argh(option, short = 'f', default = "default_filter()")]
     filter: String,
+
+    /// show download process
+    #[argh(switch, short = 'P')]
+    show_process: bool,
 }
 
 #[tokio::main]
@@ -26,9 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let arg: CliArg = argh::from_env();
     notify::notify("Changing BG")?;
     let file_path = konachan::download(
-        rand::random(),
-        konachan::Filter::from(arg.filter),
-        arg.hi_resolution,
+        &arg
     )
     .await?;
     kde::set_wallpaper(&file_path).await?;
