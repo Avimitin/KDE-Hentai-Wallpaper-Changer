@@ -24,33 +24,20 @@ impl std::fmt::Display for Filter {
     }
 }
 
-impl From<String> for Filter {
-    fn from(s: String) -> Self {
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "safe" => Self::Safe,
-            "explicit" => Self::Explicit,
-            "questionable" => Self::Questionable,
-            "none" => Self::None,
-            _ => panic!("Unsupported filter type: {s}"),
-        }
-    }
-}
-
-impl From<&String> for Filter {
-    fn from(s: &String) -> Self {
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "safe" => Self::Safe,
-            "explicit" => Self::Explicit,
-            "questionable" => Self::Questionable,
-            "none" => Self::None,
-            _ => panic!("Unsupported filter type: {s}"),
-        }
-    }
-}
-
 impl Filter {
+    fn from_string(s: &str) -> anyhow::Result<Self> {
+        let s = s.to_lowercase();
+        let result = match s.as_str() {
+            "safe" => Self::Safe,
+            "explicit" => Self::Explicit,
+            "questionable" => Self::Questionable,
+            "none" => Self::None,
+            _ => anyhow::bail!("Unsupported filter type: {s}"),
+        };
+
+        Ok(result)
+    }
+
     fn get_limit(&self, hi_resolution: bool) -> u32 {
         use Filter::*;
         if hi_resolution {
@@ -154,7 +141,7 @@ pub async fn download(arg: &super::CliArg) -> anyhow::Result<String> {
     let dir = ensure_temp_dir()
         .await
         .with_context(|| "fail to create temporary directory to store image files")?;
-    let filter = Filter::from(&arg.filter);
+    let filter = Filter::from_string(&arg.filter)?;
 
     let image_url = get_image(rand::random(), filter, arg.hi_resolution)
         .await
