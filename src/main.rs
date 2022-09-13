@@ -23,14 +23,23 @@ pub struct CliArg {
     /// show download process
     #[argh(switch, short = 'P')]
     show_process: bool,
+
+    /// disable notification
+    #[argh(switch, short = 'N')]
+    disable_notification: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let arg: CliArg = argh::from_env();
-    notify::notify("Changing BG")?;
+
+    if !arg.disable_notification {
+        notify::notify("Changing BG")?;
+    }
+
     let file_path = konachan::download(&arg).await?;
     kde::set_wallpaper(&file_path).await?;
+
     println!("Background is set to {file_path}");
     Ok(())
 }
