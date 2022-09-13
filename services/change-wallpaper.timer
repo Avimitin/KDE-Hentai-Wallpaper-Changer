@@ -1,8 +1,10 @@
 [Unit]
 Description=Schedule the wallpaper download process
 
+# man systemd.timer to see more
 [Timer]
-OnActiveSec=3m
+OnCalendar=*:1/2
+Persistent=true
 
 [Install]
 WantedBy=timers.target
