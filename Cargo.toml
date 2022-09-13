@@ -20,7 +20,7 @@ reqwest ={ version = "0.11", features = ["stream", "json"]}
 rand = "0.8"
 notify-rust = "4.5.8"
 tokio-stream = "0.1.9"
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 dbus = { version = "0.9.6" , features = ["futures"]}
 dbus-tokio = "0.7.5"
 md-5 = "0.10.4"
