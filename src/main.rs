@@ -39,6 +39,7 @@ pub struct CliArg {
 
 fn temp_file() -> PathBuf {
     let mut tmp_dir = ::std::env::temp_dir();
+    tmp_dir.push("konachan-wallpapers");
     tmp_dir.push(".last_wallpaper");
     tmp_dir
 }
