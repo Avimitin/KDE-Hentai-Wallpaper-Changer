@@ -58,10 +58,14 @@ impl Filter {
     }
 }
 
-async fn ensure_temp_dir() -> anyhow::Result<&'static str> {
-    let temp_dir = "/tmp/wallpaper-download-files";
+async fn ensure_temp_dir() -> anyhow::Result<String> {
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir.push("konachan-wallpapers");
+    let path = temp_dir.clone().to_str().unwrap().to_string();
+
     fs::create_dir_all(temp_dir).await?;
-    Ok(temp_dir)
+
+    Ok(path)
 }
 
 #[derive(Deserialize)]
