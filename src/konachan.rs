@@ -1,8 +1,10 @@
+use std::{os::unix::prelude::FileExt, sync::Arc};
+
 use anyhow::Context;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
 use serde::Deserialize;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::fs;
 use tokio_stream::StreamExt;
 
 pub enum Filter {
@@ -131,16 +133,6 @@ fn escape_filename(url: &reqwest::Url) -> anyhow::Result<String> {
     Ok(format!("{}.{}", md5sum(url.as_str()), extension))
 }
 
-fn create_download_bar(filesize: u64) -> ProgressBar {
-    let bar = ProgressBar::new(filesize);
-    bar.set_style(ProgressStyle::default_bar()
-        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-        .expect("invalid template string")
-        .progress_chars("#>-"));
-
-    bar
-}
-
 pub async fn download(arg: &super::CliArg) -> anyhow::Result<String> {
     let dir = ensure_temp_dir()
         .await
@@ -157,34 +149,162 @@ pub async fn download(arg: &super::CliArg) -> anyhow::Result<String> {
     // as filename.
     let save_to = format!("{dir}/{}", escape_filename(&url)?);
 
-    let mut file = fs::File::create(&save_to).await?;
+    parallel_download(&image_url, &save_to, arg).await?;
 
-    let api_response = reqwest::get(url).await?;
-    let filesize = api_response
-        .content_length()
-        .ok_or_else(|| anyhow::anyhow!("fail to get image size"))?;
+    Ok(save_to)
+}
 
-    let mut stream = api_response.bytes_stream();
+async fn get_image_filesize(client: &reqwest::Client, image_url: &str) -> anyhow::Result<u64> {
+    let file_info = client
+        .head(image_url)
+        .header("user-agent", "curl/7.85")
+        .send()
+        .await?;
 
-    let bar = create_download_bar(filesize);
-    if arg.show_process {
-        bar.set_message(format!("Downloading image to {save_to}"));
-    }
+    let filesize = file_info
+        .headers()
+        .get("content-length")
+        .ok_or_else(|| anyhow::anyhow!("fail to retrieve image's filesize"))?;
 
+    let error = "get invalid content-length header from url, please check your url correctness";
+    let filesize = filesize
+        .to_str()
+        .unwrap_or_else(|_| panic!("{error}"))
+        .parse::<u64>()
+        .unwrap_or_else(|_| panic!("{error}"));
+
+    Ok(filesize)
+}
+
+#[tokio::test]
+async fn test_get_image_filesize() {
+    let client = reqwest::Client::new();
+    let url = "https://konachan.com/image/8007f7f332828bafa3a5877a2c5382d0/Konachan.com%20-%20347148%202girls%20ass%20barefoot%20bed%20black_hair%20breasts%20brown_hair%20cameltoe%20fingering%20long_hair%20nipples%20no_bra%20open_shirt%20panties%20pussy%20uncensored%20underwear%20yuri.png";
+
+    let filesize = get_image_filesize(&client, url).await;
+    assert_eq!(filesize.unwrap(), 4224138);
+}
+
+fn default_bar_style() -> ProgressStyle {
+    ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .expect("invalid template string")
+        .progress_chars("#>-")
+}
+
+fn create_single_bar(
+    m: &MultiProgress,
+    length: u64,
+    style: ProgressStyle,
+    cur: usize,
+    total: u8,
+) -> ProgressBar {
+    let bar = m.add(ProgressBar::new(length));
+    bar.set_style(style);
+    bar.set_prefix(format!("[{}/{}]", cur, total));
+    bar
+}
+
+async fn download_partial(
+    id: usize,
+    client: &reqwest::Client,
+    image_url: reqwest::Url,
+    offset: (u64, u64),
+    write_to: Arc<std::fs::File>,
+    process_bar: Option<ProgressBar>,
+) -> anyhow::Result<()> {
+    let response = client
+        .get(image_url)
+        .header("Range", &format!("bytes={}-{}", offset.0, offset.1))
+        .send()
+        .await
+        .with_context(|| format!("fail to download the {id} part of the image file"))?;
+
+    let mut stream = response.bytes_stream();
     let mut progress_len = 0;
+    let total_write = offset.1 - offset.0;
+    let mut offset = offset.0;
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(&chunk).await?;
-        if arg.show_process {
-            let writed_len = std::cmp::min(progress_len + (chunk.len() as u64), filesize);
+        let chunk =
+            chunk.with_context(|| format!("thread {id} fail to fetch chunk from upstream"))?;
+
+        // WARN: This is not non-x86_64-linux compatible
+        let writed = write_to
+            .write_at(&chunk, offset)
+            .with_context(|| format!("thread {id} fail to write content"))?;
+
+        if let Some(ref bar) = process_bar {
+            let writed_len = std::cmp::min(progress_len + (chunk.len() as u64), total_write);
             progress_len = writed_len;
             bar.set_position(progress_len);
         }
+
+        offset += writed as u64;
     }
 
-    file.sync_all().await?;
+    Ok(())
+}
 
-    Ok(save_to)
+async fn parallel_download(
+    image_url: &str,
+    save_to: &str,
+    arg: &super::CliArg,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+
+    let filesize = get_image_filesize(&client, image_url).await?;
+
+    // truncate file
+    let file = Arc::new(std::fs::File::create(save_to)?);
+    file.set_len(filesize)?;
+
+    // calculate chunk size for each thread
+    let threads = arg.download_threads as u64;
+    let chunk_size = filesize / threads;
+
+    let multi_progress = MultiProgress::new();
+    let style = default_bar_style();
+
+    let mut task = Vec::new();
+    for i in 0..(arg.download_threads as usize) {
+        let client = client.clone();
+        let mut bar = None;
+        if arg.show_process {
+            let stylish_bar = create_single_bar(
+                &multi_progress,
+                chunk_size,
+                style.clone(),
+                i + 1,
+                arg.download_threads,
+            );
+
+            bar = Some(stylish_bar)
+        }
+
+        let image_url = reqwest::Url::parse(image_url).unwrap();
+        let file = Arc::clone(&file);
+        let pad = i as u64;
+        let start_offset = (chunk_size * pad) + pad;
+        let end_offset = start_offset + chunk_size;
+
+        let handle = tokio::spawn(async move {
+            download_partial(i, &client, image_url, (start_offset, end_offset), file, bar).await
+        });
+
+        task.push(handle);
+    }
+
+    for t in task {
+        t.await.unwrap()?;
+    }
+
+    multi_progress
+        .clear()
+        .expect("fail to clean the status bar");
+
+    file.sync_all()?;
+
+    Ok(())
 }
 
 #[tokio::test]

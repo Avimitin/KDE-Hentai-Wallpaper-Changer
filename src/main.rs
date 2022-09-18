@@ -15,6 +15,10 @@ fn default_screen() -> u8 {
     0
 }
 
+fn default_thread_number() -> u8 {
+    4
+}
+
 #[derive(FromArgs)]
 /// Get anime image from Konachan(https://konachan.com) and set as wallpaper.
 pub struct CliArg {
@@ -43,6 +47,10 @@ pub struct CliArg {
     /// specify monitor id, useful for multi-screen user
     #[argh(option, short = 's', default = "default_screen()")]
     screen_id: u8,
+
+    /// specify the thread number for multi-threads download
+    #[argh(option, default = "default_thread_number()")]
+    download_threads: u8,
 }
 
 fn temp_file() -> PathBuf {
