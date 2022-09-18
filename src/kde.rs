@@ -3,12 +3,12 @@ use std::time::Duration;
 use dbus::nonblock;
 
 macro_rules! js {
-    ($file:expr) => {
+    ($file:expr, $screen:expr) => {
         format!(
             r#"function set() {{
   var allDesktops = desktops();
-  // if (allDesktops.length < 1) return;
-  var d = allDesktops[0];
+  if (allDesktops.length < {}) return;
+  var d = allDesktops[{}];
   d.wallpaperPlugin = "org.kde.image";
   d.currentConfigGroup = Array("Wallpaper",
                                "org.kde.image",
@@ -17,12 +17,14 @@ macro_rules! js {
 }}
 
 set();"#,
+            $screen + 1,
+            $screen,
             $file
         )
     };
 }
 
-pub async fn set_wallpaper(filename: &str) -> anyhow::Result<()> {
+pub async fn set_wallpaper(filename: &str, screen: u8) -> anyhow::Result<()> {
     let (resource, connection) = dbus_tokio::connection::new_session_sync()?;
     let guardian = tokio::spawn(async {
         resource.await;
@@ -35,7 +37,11 @@ pub async fn set_wallpaper(filename: &str) -> anyhow::Result<()> {
         connection,
     );
     proxy
-        .method_call("org.kde.PlasmaShell", "evaluateScript", (js!(filename),))
+        .method_call(
+            "org.kde.PlasmaShell",
+            "evaluateScript",
+            (js!(filename, screen),),
+        )
         .await?;
 
     guardian.abort();
@@ -45,12 +51,12 @@ pub async fn set_wallpaper(filename: &str) -> anyhow::Result<()> {
 
 #[test]
 fn test_script_generation() {
-    let script = js!("FUCK");
+    let script = js!("FUCK", 0);
     assert_eq!(
         script,
         r#"function set() {
   var allDesktops = desktops();
-  // if (allDesktops.length < 1) return;
+  if (allDesktops.length < 1) return;
   var d = allDesktops[0];
   d.wallpaperPlugin = "org.kde.image";
   d.currentConfigGroup = Array("Wallpaper",
@@ -61,9 +67,4 @@ fn test_script_generation() {
 
 set();"#
     )
-}
-
-#[tokio::test]
-async fn test_eval() {
-    set_wallpaper("/tmp/wallpaper-download-files/Konachan.com%20-%20313298%202girls%20blue_hair%20blush%20braids%20close%20cropped%20headdress%20honkai_impact%20horns%20kiana_kaslana%20kiss%20long_hair%20raiden_mei%20shoujo_ai%20tears%20white%20wu_ganlan_cai.jpg").await.unwrap();
 }

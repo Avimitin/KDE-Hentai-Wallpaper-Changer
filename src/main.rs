@@ -11,6 +11,10 @@ fn default_filter() -> String {
     "none".to_string()
 }
 
+fn default_screen() -> u8 {
+    0
+}
+
 #[derive(FromArgs)]
 /// Get anime image from Konachan(https://konachan.com) and set as wallpaper.
 pub struct CliArg {
@@ -35,6 +39,10 @@ pub struct CliArg {
     /// save the image. Default save image to $HOME/Pictures/Anime/.
     #[argh(switch)]
     save: bool,
+
+    /// specify monitor id, useful for multi-screen user
+    #[argh(option, short = 's', default = "default_screen()")]
+    screen_id: u8,
 }
 
 fn temp_file() -> PathBuf {
@@ -101,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let file_path = konachan::download(&arg).await?;
-    kde::set_wallpaper(&file_path).await?;
+    kde::set_wallpaper(&file_path, arg.screen_id).await?;
 
     println!("Background is set to {file_path}");
     save_into_fifo(&file_path)?;
