@@ -157,7 +157,7 @@ pub async fn download(arg: &super::CliArg) -> anyhow::Result<String> {
 async fn get_image_filesize(client: &reqwest::Client, image_url: &str) -> anyhow::Result<u64> {
     let file_info = client
         .head(image_url)
-        .header("user-agent", "curl/7.85")
+        .header("user-agent", "Mozilla/5.0 (Android 4.4; Mobile; rv:41.0) Gecko/41.0 Firefox/41.0")
         .send()
         .await?;
 
@@ -250,7 +250,10 @@ async fn parallel_download(
     save_to: &str,
     arg: &super::CliArg,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap();
 
     let filesize = get_image_filesize(&client, image_url).await?;
 
