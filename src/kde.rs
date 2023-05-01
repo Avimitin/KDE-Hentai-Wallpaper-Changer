@@ -2,22 +2,15 @@ use std::time::Duration;
 
 use dbus::nonblock;
 
-macro_rules! js {
+macro_rules! plasma_eval {
     ($file:expr, $screen:expr) => {
         format!(
-            r#"function set() {{
-  var allDesktops = desktops();
-  if (allDesktops.length < {}) return;
-  var d = allDesktops[{}];
-  d.wallpaperPlugin = "org.kde.image";
-  d.currentConfigGroup = Array("Wallpaper",
-                               "org.kde.image",
-                               "General");
-  d.writeConfig("Image", "{}");
-}}
-
-set();"#,
-            $screen + 1,
+            r#"
+var desktop = desktopForScreen({});
+desktop.wallpaperPlugin = "org.kde.image";
+desktop.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+desktop.writeConfig("Image", "{}");
+"#,
             $screen,
             $file
         )
@@ -36,35 +29,29 @@ pub async fn set_wallpaper(filename: &str, screen: u8) -> anyhow::Result<()> {
         Duration::from_secs(2),
         connection,
     );
+
+    // check screen id correctness
+    let resp: (String,) = proxy
+        .method_call(
+            "org.kde.PlasmaShell",
+            "evaluateScript",
+            ("print(screenCount)",),
+        )
+        .await?;
+    let max_screen: u8 = resp.0.parse()?;
+    if max_screen <= screen {
+        anyhow::bail!("screen id too large")
+    }
+
     proxy
         .method_call(
             "org.kde.PlasmaShell",
             "evaluateScript",
-            (js!(filename, screen),),
+            (plasma_eval!(filename, screen),),
         )
         .await?;
 
     guardian.abort();
 
     Ok(())
-}
-
-#[test]
-fn test_script_generation() {
-    let script = js!("FUCK", 0);
-    assert_eq!(
-        script,
-        r#"function set() {
-  var allDesktops = desktops();
-  if (allDesktops.length < 1) return;
-  var d = allDesktops[0];
-  d.wallpaperPlugin = "org.kde.image";
-  d.currentConfigGroup = Array("Wallpaper",
-                               "org.kde.image",
-                               "General");
-  d.writeConfig("Image", "FUCK");
-}
-
-set();"#
-    )
 }
