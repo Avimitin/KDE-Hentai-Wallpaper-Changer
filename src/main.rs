@@ -2,7 +2,11 @@ mod kde;
 mod konachan;
 mod notify;
 
-use std::path::{Path, PathBuf};
+use std::{
+    os::unix::prelude::MetadataExt,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime},
+};
 
 use anyhow::Context;
 use argh::FromArgs;
@@ -53,24 +57,29 @@ pub struct CliArg {
     download_threads: u8,
 }
 
-fn temp_file() -> PathBuf {
-    let mut tmp_dir = ::std::env::temp_dir();
+fn dl_dir() -> PathBuf {
+    let mut tmp_dir = std::env::temp_dir();
     tmp_dir.push("konachan-wallpapers");
-    tmp_dir.push(".last_wallpaper");
     tmp_dir
 }
 
+fn fifo_file() -> PathBuf {
+    let mut dl_dir = dl_dir();
+    dl_dir.push(".last_wallpaper");
+    dl_dir
+}
+
 fn save_into_fifo(filename: &str) -> anyhow::Result<()> {
-    std::fs::write(temp_file(), filename)
+    std::fs::write(fifo_file(), filename)
         .with_context(|| "fail to write image path into fifo file")?;
     Ok(())
 }
 
 fn read_from_fifo() -> anyhow::Result<PathBuf> {
-    let content = std::fs::read(temp_file()).with_context(|| {
+    let content = std::fs::read(fifo_file()).with_context(|| {
         format!(
             "fail to read fifo info from temp file: {}",
-            temp_file().display()
+            fifo_file().display()
         )
     })?;
     let path = String::from_utf8(content).with_context(|| "invalid path string")?;
@@ -103,6 +112,52 @@ fn save_wallpaper() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn try_gc<P: AsRef<Path>>(download_dir: P) -> anyhow::Result<()> {
+    let files = std::fs::read_dir(download_dir)?;
+    let garbage = files
+        .into_iter()
+        .filter_map(|f| {
+            let entry = f.ok()?;
+
+            let metadata = entry.metadata().ok()?;
+            if metadata.is_dir() {
+                return None;
+            }
+
+            let mtime = metadata.modified().ok()?;
+            let now = SystemTime::now();
+            let elapsed = now
+                .duration_since(mtime)
+                .expect("You have a picture from the future, check your system time!");
+
+            if elapsed > Duration::from_secs(60 * 30) {
+                Some((entry.path(), metadata.size()))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let (file_count, total_gc_size) =
+        garbage
+            .iter()
+            .fold((0, 0), |(file_count, total_gc_size), (img, size)| {
+                if let Err(err) = std::fs::remove_file(img) {
+                    eprintln!("fail to clean up file {img:?}: {err}");
+
+                    (file_count, total_gc_size)
+                } else {
+                    (file_count + 1, total_gc_size + size)
+                }
+            });
+
+    println!(
+        "Removed {file_count} files, save {} MB space",
+        total_gc_size / 1048576
+    );
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let arg: CliArg = argh::from_env();
@@ -122,5 +177,12 @@ async fn main() -> anyhow::Result<()> {
     println!("Background is set to {file_path}");
     save_into_fifo(&file_path)?;
 
+    try_gc(dl_dir())?;
+
     Ok(())
+}
+
+#[test]
+fn test_try_gc() {
+    try_gc("/tmp/konachan-wallpapers").unwrap();
 }
