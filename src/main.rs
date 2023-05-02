@@ -114,8 +114,10 @@ fn save_wallpaper() -> anyhow::Result<()> {
 
 fn try_gc<P: AsRef<Path>>(download_dir: P) -> anyhow::Result<()> {
     let files = std::fs::read_dir(download_dir)?;
-    let garbage = files
+
+    let (file_count, total_gc_size) = files
         .into_iter()
+        // find image file created 30mins before
         .filter_map(|f| {
             let entry = f.ok()?;
 
@@ -136,20 +138,16 @@ fn try_gc<P: AsRef<Path>>(download_dir: P) -> anyhow::Result<()> {
                 None
             }
         })
-        .collect::<Vec<_>>();
+        // delete and summarize deleted files
+        .fold((0, 0), |(file_count, total_gc_size), (img, size)| {
+            if let Err(err) = std::fs::remove_file(&img) {
+                eprintln!("fail to clean up file {img:?}: {err}");
 
-    let (file_count, total_gc_size) =
-        garbage
-            .iter()
-            .fold((0, 0), |(file_count, total_gc_size), (img, size)| {
-                if let Err(err) = std::fs::remove_file(img) {
-                    eprintln!("fail to clean up file {img:?}: {err}");
-
-                    (file_count, total_gc_size)
-                } else {
-                    (file_count + 1, total_gc_size + size)
-                }
-            });
+                (file_count, total_gc_size)
+            } else {
+                (file_count + 1, total_gc_size + size)
+            }
+        });
 
     println!(
         "Removed {file_count} files, save {} MB space",
